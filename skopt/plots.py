@@ -25,18 +25,6 @@ def get_space_samples(result, use_dims=None):
     * `space`: [`Space`]: The space object
     * `samples`: [`samples`]: The samples to plot
     """
-    def get_transform_rvs(orig_space, use_dims):
-        """Function factory to perform transform(rvs()) in one go"""
-        def transform_rvs(n_samples=1, random_state=None):
-            """
-            Perform the action transform(rvs()) at once, so we can discard
-            categorical parameters
-            """
-            trans = orig_space.transform(orig_space.rvs(n_samples=n_samples, random_state=random_state))
-            return trans[:,use_dims] if use_dims is not None else trans
-
-        return transform_rvs
-
     if use_dims is None:
         space = result.space
         samples = np.asarray(result.x_iters)
@@ -46,8 +34,6 @@ def get_space_samples(result, use_dims=None):
         space.bounds = [result.space.bounds[d] for d in use_dims]
         space.n_dims = len(space.dimensions)
         samples = np.asarray(result.x_iters)[:, use_dims]
-
-    space.transform_rvs = get_transform_rvs(result.space, use_dims)
 
     return space, samples
 
