@@ -10,6 +10,48 @@ from matplotlib.ticker import MaxNLocator
 from scipy.optimize import OptimizeResult
 
 
+def get_space_samples(result, use_dims=None):
+    """
+    A bit of a hack to get to select dimensions when plotting. Should be more
+    properly supported by the space/dimensions classes when visualizing
+
+    Parameters
+    ----------
+    * f`result` [`OptimizeResult`]
+         The result for which to create the reduced-dimensional space&samples
+    * `use_dims` [list of int, default=None] List of dimensions to include
+
+    Returns
+    * `space`: [`Space`]: The space object
+    * `samples`: [`samples`]: The samples to plot
+    """
+    def get_transform_rvs(orig_space, use_dims):
+        """Function factory to perform transform(rvs()) in one go"""
+        def transform_rvs(n_samples=1, random_state=None):
+            """
+            Perform the action transform(rvs()) at once, so we can discard
+            categorical parameters
+            """
+            trans = orig_space.transform(orig_space.rvs(n_samples=n_samples, random_state=random_state))
+            return trans[:,use_dims] if use_dims is not None else trans
+
+        return transform_rvs
+
+    if use_dims is None:
+        space = result.space
+        samples = np.asarray(result.x_iters)
+    else:
+        space = t = type('Space_reduced', (), {})()
+        space.dimensions = [result.space.dimensions[d] for d in use_dims]
+        space.bounds = [result.space.bounds[d] for d in use_dims]
+        space.n_dims = len(space.dimensions)
+        samples = np.asarray(result.x_iters)[:, use_dims]
+
+    space.transform_rvs = get_transform_rvs(result.space, use_dims)
+
+    return space, samples
+
+
 def plot_convergence(*args, **kwargs):
     """Plot one or several convergence traces.
 
@@ -349,7 +391,7 @@ def partial_dependence(space, model, i, j=None, sample_points=None,
 
 
 def plot_objective(result, levels=10, n_points=40, n_samples=250, size=2,
-                   zscale='linear', dimensions=None):
+                   zscale='linear', dimensions=None, use_dims=None):
     """Pairwise partial dependence plot of the objective function.
 
     The diagonal shows the partial dependence for dimension `i` with
@@ -392,15 +434,19 @@ def plot_objective(result, levels=10, n_points=40, n_samples=250, size=2,
     * `dimensions` [list of str, default=None] Labels of the dimension
         variables. `None` defaults to `space.dimensions[i].name`, or
         if also `None` to `['X_0', 'X_1', ..]`.
+    * `use_dims` [list of int, default=None] List of dimensions to include
 
     Returns
     -------
     * `ax`: [`Axes`]:
         The matplotlib axes.
     """
-    space = result.space
-    samples = np.asarray(result.x_iters)
-    rvs_transformed = space.transform(space.rvs(n_samples=n_samples))
+    #space = result.space
+    #samples = np.asarray(result.x_iters)
+    space, samples = get_space_samples(result, use_dims=use_dims)
+    rvs_transformed = result.space.transform(result.space.rvs(n_samples=n_samples))
+    #rvs_transformed = space.transform_rvs(n_samples=n_samples)
+    if use_dims is None: use_dims = list(range(len(space.dimensions)))
 
     if zscale == 'log':
         locator = LogLocator()
@@ -419,7 +465,7 @@ def plot_objective(result, levels=10, n_points=40, n_samples=250, size=2,
     for i in range(space.n_dims):
         for j in range(space.n_dims):
             if i == j:
-                xi, yi = partial_dependence(space, result.models[-1], i,
+                xi, yi = partial_dependence(result.space, result.models[-1], use_dims[i],
                                             j=None,
                                             sample_points=rvs_transformed,
                                             n_points=n_points)
@@ -429,8 +475,8 @@ def plot_objective(result, levels=10, n_points=40, n_samples=250, size=2,
 
             # lower triangle
             elif i > j:
-                xi, yi, zi = partial_dependence(space, result.models[-1],
-                                                i, j,
+                xi, yi, zi = partial_dependence(result.space, result.models[-1],
+                                                use_dims[i], use_dims[j],
                                                 rvs_transformed, n_points)
                 ax[i, j].contourf(xi, yi, zi, levels,
                                   locator=locator, cmap='viridis_r')
@@ -443,7 +489,7 @@ def plot_objective(result, levels=10, n_points=40, n_samples=250, size=2,
                                      dim_labels=dimensions)
 
 
-def plot_evaluations(result, bins=20, dimensions=None):
+def plot_evaluations(result, bins=20, dimensions=None, use_dims=None):
     """Visualize the order in which points where sampled.
 
     The scatter plot matrix shows at which points in the search
@@ -468,14 +514,16 @@ def plot_evaluations(result, bins=20, dimensions=None):
     * `dimensions` [list of str, default=None] Labels of the dimension
         variables. `None` defaults to `space.dimensions[i].name`, or
         if also `None` to `['X_0', 'X_1', ..]`.
+    * `use_dims` [list of int, default=None] List of dimensions to include
 
     Returns
     -------
     * `ax`: [`Axes`]:
         The matplotlib axes.
     """
-    space = result.space
-    samples = np.asarray(result.x_iters)
+    #space = result.space
+    #samples = np.asarray(result.x_iters)
+    space, samples = get_space_samples(result, use_dims=use_dims)
     order = range(samples.shape[0])
     fig, ax = plt.subplots(space.n_dims, space.n_dims,
                            figsize=(2 * space.n_dims, 2 * space.n_dims))
